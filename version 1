@@ -1,0 +1,327 @@
+#Program developed by Gabriel Radünz Karloh 
+#E-mail: gabrielraka@hotmail.com
+#Imported libraries to the code
+from tkinter import *
+from tkinter import ttk
+from tkinter import filedialog
+from tkinter.messagebox import showinfo
+import customtkinter
+import pandas as pd
+import ezdxf
+import math
+import os
+import xlsxwriter 
+import tkinter as tk
+
+#Start of the app -> Everythong needed to initialize the CTk interface
+app= customtkinter.CTk()
+customtkinter.set_default_color_theme("green")
+customtkinter.set_appearance_mode("dark")
+app.title("Tempos de laser")
+app.geometry("600x750")
+
+#Function to set the directory of a file
+diretorios=["Diretório","Planilha","Local"]
+
+def local():
+  path=filedialog.askdirectory(title="Local")
+  diretorios[2]=str(path)
+  return(diretorios)
+
+def diretorio():
+   path= filedialog.askdirectory(title="Diretório")
+   diretorios[0]=path
+   return(diretorios)
+
+#function to set the directory of the excel file that contains all the information 
+def planilha():
+   path= filedialog.askopenfilename(title="Select a File", filetype=(('All files','*.xlsx'),('all files','*.*')))
+   diretorios[1]=path
+   return(diretorios)
+
+#function that reads all of the files, and give a new excel file, containing all the information
+def dxf():
+#gets the selected name, and sets it as the new excel file name  
+  nome_arquivo=nome.get()
+  nome_arquivo+=".xlsx"
+  novonome=diretorios[2]
+  novonome+="/"
+  novonome+=nome_arquivo
+  print(novonome)
+#laser parameters inputs
+  espessuras_chapas=["1","1.5","2","2.5","3","4","5","6","8","10","12","15"]
+  tempo_corte_carb=[0.35,0.37,0.40,0.42,0.45,0.51,0.58,0.66,0.85,1.1,1.42,2.08]
+  tempo_furo_carb=[0.0002,0.0005,0.0006,0.0007,0.0008,0.0023,0.0035,0.0043,0.0087,0.0286,0.0624,0.298]
+  tempo_corte_inox=[0.25,0.29,0.33,0.39,0.45,0.6,0.81,1.08,1.96,3.54,6.4]
+  tempo_furo_inox=[0.00072,0.00087,0.00122,0.00149,0.00176,0.0026,0.0039,0.0052,0.00823,0.013,0.0273]
+  nomes=[]
+  path=diretorios[0]
+  dados=pd.read_excel(diretorios[1])
+  numero=(dados['Number'].tolist())
+  material=(dados['Material'].tolist())
+  espessuras=[]
+  n_espessuras=[]
+  perimetros=[]
+  tempo_de_corte=[]
+  chapa=[]
+  numero_perfil_int=[]
+#Checking if the material is a metal sheet or not
+  for i in range(len(material)):
+    varnew=material[i]
+    if varnew[0:11] ==("sheet metal") or varnew[0:11] ==("metal sheet"):
+      chapa.append(varnew[12:18])
+    else:
+      chapa.append(varnew)
+#finding the thickness of the material.
+  for j in range(len(material)):
+    var=material[j]
+    var2=""
+    name=""
+    nname=""
+    k=-1
+    if "x" in var:
+      var2=var2
+    else:
+      var2="x"
+    while var2!= "x":
+      var2=var[k]
+      if var2!="x":
+        name+=var2
+        k-=1
+      elif var2 =="x":
+       k-=1
+    espessuras.append(name)
+#thickness was read backwards, and now needs to be setted forward (before: 01 -> after: 10)
+  for h in range(len(espessuras)):
+    var=len(espessuras[h])
+    varname=espessuras[h]
+    var3=""
+    y=0
+    for y in range(var):
+      var3+=varname[var-y-1]
+    n_espessuras.append(var3) 
+  os.chdir(path)
+#perimeter calculation
+  for file in os.listdir():
+    comprimento = 0
+    if file.endswith(".dxf"):
+      file_path = f"{path}/{file}"
+      dwg = ezdxf.readfile(file) 
+      msp = dwg.modelspace()
+      num=0
+      for e in (msp):
+        if e.dxf.layer == "OUTER" or e.dxf.layer=="IV_ARC_CENTERS" or e.dxf.layer=="IV_INTERIOR_PROFILES" or e.dxf.layer=="IV_TOOL_CENTER" or e.dxf.layer=="IV_TOOL_CENTER_DOWN" or e.dxf.layer=="IV_FEATURE_PROFILES":     
+          #counting all the holes needed 
+          if e.dxf.layer == "IV_INTERIOR_PROFILES":
+            num+=1
+          #checking the lenght of lines  
+          if e.dxftype() == 'LINE':
+            dl = math.sqrt((e.dxf.start[0]-e.dxf.end[0])**2 + (e.dxf.start[1]- 
+            e.dxf.end[1])**2)  
+            if dl < 0: 
+              dl = -dl
+            else:
+              dl=dl
+            comprimento += dl
+          #checking the lenght of circles  
+          elif e.dxftype() == 'CIRCLE':
+            dc = 2*math.pi*e.dxf.radius
+            comprimento +=  dc
+          #checking the lenght of arcs  
+          elif e.dxftype()=="ARC":
+            raio=round(e.dxf.radius)
+            start=round(e.dxf.start_angle)
+            end=round(e.dxf.end_angle)
+            Ang=start-end
+            if end == 0:
+              end=360
+              Ang=start-end
+              if Ang > 0:
+                Ang=Ang
+              else:
+                Ang=-Ang
+            da= 2*math.pi*raio*Ang/360
+            if da < 0:
+              da=-da
+            else:
+              da=da
+            comprimento+=da
+          #checking the lenght of splines
+          elif e.dxftype() == 'SPLINE':
+            pontos = e.get_control_points()
+            for i in range(len(pontos)-1):
+              ds = math.sqrt((pontos[i][0]-pontos[i+1][0])**2 + (pontos[i][1]- pontos[i+1][1])**2) 
+              comprimento += ds
+      #rounds the perimeter, add the number of holes, and sets a short name for the corresponding dxf.        
+      comprimento = round(comprimento)
+      perimetros.append(comprimento)
+      numero_perfil_int.append(num)
+      file = str(file)
+      n_name =file[0:14]
+      nomes.append(n_name)
+
+#sets the new excel sheet
+  
+  workbook = xlsxwriter.Workbook(novonome)
+  worksheet = workbook.add_worksheet("Tempos")
+  worksheet.set_column('A:A',17)
+  worksheet.set_column('B:B',37)
+
+#calculates the effective time of the cuts.
+  for u in range(len(espessuras)):  
+    if numero[u] in nomes:
+      var=numero[u]
+      index=nomes.index(var)
+      nome_chapa=chapa[u]
+      if nome_chapa[0:3] == "1.0" and  (n_espessuras[u] in espessuras_chapas):
+        varespessura=n_espessuras[u]
+        index2=espessuras_chapas.index(varespessura)
+        tx=perimetros[index]*tempo_corte_carb[index2]/1000 +(numero_perfil_int[index]+1)*tempo_furo_carb[index2]
+        tx=str(round(tx,2))
+        tx=tx.replace(".",",")
+        tempo_de_corte.append(tx)
+      elif nome_chapa[0:3] == "1.4" and  (n_espessuras[u] in espessuras_chapas):
+        varespessura=n_espessuras[u]
+        index2=espessuras_chapas.index(varespessura)
+        tx=perimetros[index]*tempo_corte_inox[index2]/1000 +(numero_perfil_int[index]+1)*tempo_furo_inox[index2]
+        tx=str(round(tx,2))
+        tx=tx.replace(".",",")
+        tempo_de_corte.append(tx)
+      else:
+        tempo_de_corte.append(" Chapa não especificada na planilha")   
+    #here we have some lines of code that can help us find some possible mistakes while the program reads the dxf files, it is not necessary, but it is useefull for multiple purposes.    
+    #basta tirar o "#" da próxima linha para poder fazer um estudo mais completo dos outputs do programa
+    #print("Peça número ",numero[u], " Perimetro ",perimetros[index], " mm espessura de", n_espessuras[u], " mm", "Chapa ", chapa[u],"Numero de perfis internos ", numero_perfil_int[index], " tempo de corte ",tempo_de_corte[u])
+    #print("Peça número ",numero[u], "tempo de corte ",tempo_de_corte[u])
+      worksheet.write(u,0,numero[u])
+      worksheet.write(u,1,tempo_de_corte[u])
+    #if the name is on the excel sheet but not on the folder, we get a error message on the excel file, and the program continues to run
+    else:
+      tempo_de_corte.append("erro")
+      worksheet.write(u,0,numero[u])
+      worksheet.write(u,1,tempo_de_corte[u])   
+  #excel sheet is closed and saved.    
+  workbook.close()
+  popup=Toplevel(app)
+  popup.title("Planilha feita")
+  popup.geometry("800x100")
+  popup.config(bg="black")
+  texto=("Planilha salva como: "+nome_arquivo+" salva em: "+diretorios[2])
+  customtkinter.CTkLabel(popup,text="Planilha salva com sucesso",text_color="light green").pack()
+  customtkinter.CTkLabel(popup,text=texto,text_color="light green").pack()
+  #Label(app,text="Planilha salva como: "+nome_arquivo+" salva em: "+diretorios[0]).pack()
+
+path2=["0"]
+def arquivo(*args):
+   path2[0]= filedialog.askopenfilename(title="Select a File", filetype=(('All files','*.dxf'),('all files','*.*')))
+   return(path2)
+
+#thisfunction is the same as the dxf function, however this one just calculate the time for a individual file
+def dxf_indi(*args):
+ espessuras_chapas=["1","1.5","2","2.5","3","4","5","6","8","10","12","15"]
+ tempo_corte_carb=[0.35,0.37,0.40,0.42,0.45,0.51,0.58,0.66,0.85,1.1,1.42,2.08]
+ tempo_furo_carb=[0.0002,0.0005,0.0006,0.0007,0.0008,0.0023,0.0035,0.0043,0.0087,0.0286,0.0624,0.298]
+ tempo_corte_inox=[0.25,0.29,0.33,0.39,0.45,0.6,0.81,1.08,1.96,3.54,6.4]
+ tempo_furo_inox=[0.00072,0.00087,0.00122,0.00149,0.00176,0.0026,0.0039,0.0052,0.00823,0.013,0.0273]
+
+ for file in os.listdir():
+    longitud_total = 0
+    file = path2[0]
+    dwg = ezdxf.readfile(file) 
+    msp = dwg.modelspace()
+    num=0
+    material_novo=material_funcao.get()
+    espessura_nova=espessura_funcao.get()
+
+    for e in (msp):
+        if e.dxf.layer == "OUTER" or e.dxf.layer=="IV_ARC_CENTERS" or e.dxf.layer=="IV_INTERIOR_PROFILES" or e.dxf.layer=="IV_TOOL_CENTER" or e.dxf.layer=="IV_TOOL_CENTER_DOWN" or e.dxf.layer=="IV_FEATURE_PROFILES":     
+          if e.dxf.layer == "IV_INTERIOR_PROFILES":
+            num+=1
+
+          if e.dxftype() == 'LINE':
+            dl = math.sqrt((e.dxf.start[0]-e.dxf.end[0])**2 + (e.dxf.start[1]- e.dxf.end[1])**2)  
+            if dl < 0: 
+              dl = -dl
+            else:
+              dl=dl
+            longitud_total = longitud_total + dl
+          elif e.dxftype() == 'CIRCLE':
+            dc = 2*math.pi*e.dxf.radius
+            longitud_total = longitud_total + dc
+          elif e.dxftype()=="ARC":
+            raio=round(e.dxf.radius)
+            start=round(e.dxf.start_angle)
+            end=round(e.dxf.end_angle)
+            Ang=start-end
+            if end == 0:
+              end=360
+              Ang=start-end
+              if Ang > 0:
+                Ang=Ang
+              else:
+                Ang=-Ang
+            da= 2*math.pi*raio*Ang/360
+            if da < 0:
+              da=-da
+            else:
+              da=da
+            longitud_total=longitud_total+da
+          elif e.dxftype() == 'SPLINE':
+            puntos = e.get_control_points()
+            for i in range(len(puntos)-1):
+              ds = math.sqrt((puntos[i][0]-puntos[i+1][0])**2 + (puntos[i][1]- 
+              puntos[i+1][1])**2) 
+              longitud_total = longitud_total + ds
+    longitud_total = round(longitud_total)
+    file = str(file) 
+ if material_novo == ("Carbono"):
+   variavel=espessuras_chapas.index(espessura_nova)
+   tempodecorte=longitud_total/1000*(tempo_corte_carb[variavel])+tempo_furo_carb[variavel]*(num+1)
+ elif material_novo==("Inox"):
+   variavel=espessuras_chapas.index(espessura_nova)
+   tempodecorte=(longitud_total/1000)*(tempo_corte_inox[variavel])+tempo_furo_inox[variavel]*(num+1)
+ texto="Tempo de corte para " + file[-34:-20] + " é " + (str(round(tempodecorte,2)) +" minutos")
+ #Label(app,text=texto,font=13).pack() 
+ popup =Toplevel(app)
+ popup.title("Tempo individual")
+ popup.config(bg="black")
+ popup.geometry("400x100")
+ customtkinter.CTkLabel(popup,text="Tempo individual calculado com sucesso",text_color="light green").pack()
+ customtkinter.CTkLabel(popup,text=texto,text_color="light green").pack()
+
+
+customtkinter.CTkLabel(app, text="Clique nos botões para selecionar os arquivos", font=('Aerial',25),text_color="light green").pack(pady=20)
+
+app.nameLabel=customtkinter.CTkLabel(app,text="------------Para planilhas------------",font=("Arial",20),text_color="light green")
+app.nameLabel.pack(pady=12,padx=10)
+
+button= customtkinter.CTkButton(app, text="Diretório", command= diretorio)
+button.pack(padx=5, pady=15)
+
+button2=customtkinter.CTkButton(app, text="Planilha",command=planilha)
+button2.pack(padx=5,pady=15)
+
+nome = customtkinter.CTkEntry(app, placeholder_text="Nome da planilha")
+nome.pack(pady=12,padx=10)
+
+local=customtkinter.CTkButton(app,text="Onde salvar",command=local).pack(pady=12,padx=10)
+
+buttonrun=customtkinter.CTkButton(app,text="Calcular dados da planilha",command=dxf)
+buttonrun.pack(padx=5,pady=15)
+
+app.nameLabel=customtkinter.CTkLabel(app,text="------------Para peças individuais------------",font=("Arial",20),text_color="light green")
+app.nameLabel.pack(pady=12,padx=10)
+
+button3=customtkinter.CTkButton(app,text="Arquivo",command=arquivo)
+button3.pack(pady=12,padx=10)
+
+espessura_funcao=customtkinter.CTkOptionMenu(app,values=["1","1.5","2","2.5","3","4","5","6","8","10","12","15"])
+espessura_funcao.pack(pady=12,padx=10)
+
+material_funcao=customtkinter.CTkOptionMenu(app,values=["Carbono","Inox"])
+material_funcao.pack(pady=12,padx=10)
+
+run2=customtkinter.CTkButton(app,text="Cálcular tempo individual",command=dxf_indi)
+run2.pack(pady=12,padx=10)
+
+app.mainloop()
